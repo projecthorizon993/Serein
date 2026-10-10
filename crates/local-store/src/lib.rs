@@ -46,6 +46,13 @@ pub struct AppPreferences {
 	pub show_hidden_channels: bool,
 	/// Keep custom emoji that need Nitro out of suggestions and lock them in the picker.
 	pub hide_nitro_emojis: bool,
+	/// Report every entitlement as present locally.
+	///
+	/// This is the native form of a Vencord `FakeNitro`: Serein has no web app to patch, but it does
+	/// gate message length, upload size, external stickers and animated emoji on `premium_type`, and
+	/// this removes those gates on this device. It is a preference and not a claim about the account —
+	/// the real tier is still recorded, and Discord can still refuse something server-side.
+	pub local_nitro: bool,
 	/// Device-local opt-in; older saved preferences deserialize with conversion off.
 	pub convert_emoticons: bool,
 	pub hide_title_bar: bool,
@@ -88,6 +95,7 @@ impl Default for AppPreferences {
 			notification_options: Default::default(),
 			show_hidden_channels: false,
 			hide_nitro_emojis: false,
+			local_nitro: false,
 			convert_emoticons: false,
 			hide_title_bar: false,
 			hide_window_decorations: false,

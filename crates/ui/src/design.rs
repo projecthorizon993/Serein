@@ -80,11 +80,15 @@ pub fn rail_name(response: &egui::Response, name: impl AsRef<str>) {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[repr(u8)]
 pub enum Variant {
-	/// The house palette: neutral grey surfaces, following the light/dark preference.
-	#[default]
-	Standard = 0,
 	/// Deep black surfaces for OLED displays.
+	///
+	/// The default rather than [`Variant::Standard`]: on an OLED panel a non-black pixel costs power
+	/// and contrast, so the preset is pure black and every surface is derived from it. Someone who
+	/// wants neutral grey still picks it, and a stored choice always wins over this.
+	#[default]
 	Eclipse = 1,
+	/// The house palette: neutral grey surfaces, following the light/dark preference.
+	Standard = 0,
 	/// Lighter blue-grey surfaces.
 	Slate = 2,
 	Nightfall = 3,
@@ -156,7 +160,7 @@ impl Variant {
 			.unwrap_or_default()
 	}
 }
-static VARIANT: AtomicU8 = AtomicU8::new(0);
+static VARIANT: AtomicU8 = AtomicU8::new(Variant::Eclipse as u8);
 static PRIMARY_COLOR: AtomicU32 = AtomicU32::new(0);
 
 pub fn primary_color() -> Option<[u8; 3]> {
@@ -1876,7 +1880,19 @@ mod tests {
 			}
 		}
 		assert_eq!(Variant::from_key("nonsense"), None);
-		assert_eq!(Variant::from_u8(200), Variant::Standard);
+		// An unknown byte falls back to the default preset, which is now Eclipse rather than Standard.
+		assert_eq!(Variant::from_u8(200), Variant::Eclipse);
+		assert_eq!(Variant::default(), Variant::Eclipse);
+		// Eclipse has to be the default *and* has to be actually black: an OLED panel gains nothing
+		// from a dark grey, so the point of defaulting to it would be lost if the palette drifted.
+		let default_dark = builtin_colors(true, Variant::default());
+		assert_eq!(default_dark.base, Color32::BLACK);
+		assert_eq!(default_dark.sidebar, rgb(0x070708));
+		assert_eq!(default_dark.chat, rgb(0x070708));
+		assert_eq!(default_dark.raised, rgb(0x141416));
+		// Defaulting to one preset is not removing the others, and the picker still offers all seven.
+		assert!(Variant::ALL.contains(&Variant::Standard));
+		assert_eq!(Variant::ALL.len(), 7);
 
 		{
 			for variant in Variant::ALL {

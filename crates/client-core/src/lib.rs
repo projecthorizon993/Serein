@@ -59,6 +59,8 @@ pub const MAX_DRAFT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_CONTENT: usize = 2000;
 /// Nitro and Nitro Classic accounts may send longer messages.
 pub const MAX_PREMIUM_CONTENT: usize = 4000;
+/// Discord's `premium_type` for full Nitro, which is what a local override reports.
+pub const NITRO_FULL: u8 = 2;
 /// Discord accepts at most ten attachments per message.
 pub const MAX_ATTACHMENTS: usize = 10;
 pub const MAX_NAV: usize = model::account::MAX_ENTRIES;
@@ -675,6 +677,14 @@ pub struct ReadingCursor {
 pub struct State {
 	/// The signed-in account's Discord `premium_type`; 0 until READY reports one.
 	pub premium_type: u8,
+	/// Device-local override that reports every entitlement as present.
+	///
+	/// This is what a Vencord `FakeNitro` port ends up as in a native client: there is no web app to
+	/// patch, but the client still gates a handful of things on `premium_type`, and those gates are
+	/// worth removing locally. It is persisted in [`AppPreferences`], so it is a preference and not a
+	/// claim about the account — Discord can still refuse something at the server, exactly as the
+	/// original mod does.
+	pub local_premium: bool,
 	pub stickers: stickers::Stickers,
 	pub interactions: interactions::Interactions,
 	pub application_commands: application_commands::Catalog,
@@ -895,6 +905,7 @@ impl Default for State {
 	fn default() -> Self {
 		Self {
 			premium_type: 0,
+			local_premium: false,
 			stickers: Default::default(),
 			interactions: Default::default(),
 			application_commands: Default::default(),
@@ -1092,11 +1103,38 @@ impl State {
 	}
 	fn set_premium_type(&mut self, kind: u8) {
 		self.premium_type = kind;
-		self.stickers.external_allowed = matches!(kind, 2 | 3);
+		// Derived from the effective tier, so an override survives a later `STICKER_ENTITLEMENT`
+		// telling the client the account has none.
+		self.stickers.external_allowed = matches!(self.effective_premium_type(), 2 | 3);
 	}
+
+	/// Premium tier as the client's gates should see it.
+	///
+	/// Every entitlement check goes through here rather than reading `premium_type` directly, so a
+	/// local override covers all of them at once instead of needing the same `if` repeated in five
+	/// places. Returns Nitro when the override is on, and the real tier otherwise.
+	pub fn effective_premium_type(&self) -> u8 {
+		if self.local_premium {
+			// 2 is full Nitro, which is what the sticker gate wants; `content_limit` also needs
+			// 1 | 2, and `upload_limit` gives it the largest bucket.
+			NITRO_FULL
+		} else {
+			self.premium_type
+		}
+	}
+
+	/// Turns the local premium override on or off, recomputing everything it feeds.
+	///
+	/// Recomputing here is the point: `STICKER_ENTITLEMENT` can arrive at any time, so a flag that
+	/// only took effect at the next READY would be wrong for the rest of the session.
+	pub fn set_local_premium(&mut self, enabled: bool) {
+		self.local_premium = enabled;
+		self.stickers.external_allowed = matches!(self.effective_premium_type(), 2 | 3);
+	}
+
 	/// Longest message content Discord accepts from this account.
 	pub fn content_limit(&self) -> usize {
-		if matches!(self.premium_type, 1 | 2) {
+		if matches!(self.effective_premium_type(), 1 | 2) {
 			MAX_PREMIUM_CONTENT
 		} else {
 			MAX_CONTENT
@@ -1105,7 +1143,7 @@ impl State {
 	/// Largest per-message attachment total this account may send without server boosts.
 	pub fn upload_limit(&self) -> u64 {
 		const MIB: u64 = 1024 * 1024;
-		match self.premium_type {
+		match self.effective_premium_type() {
 			2 => 500 * MIB,
 			1 | 3 => 50 * MIB,
 			_ => 20 * MIB,
@@ -6137,5 +6175,45 @@ mod tests {
 			apply(&mut state, Event::Message(message(200)));
 			assert!(state.timeline.is_empty()); // queued live content cannot undo revocation
 		}
+	}
+
+	#[test]
+	fn the_local_premium_override_raises_every_client_side_limit() {
+		let mut state = State::default();
+		assert_eq!(state.premium_type, 0);
+		assert_eq!(state.content_limit(), MAX_CONTENT);
+		assert_eq!(state.upload_limit(), 20 * 1024 * 1024);
+		assert!(!state.stickers.external_allowed);
+
+		state.set_local_premium(true);
+		assert_eq!(state.effective_premium_type(), NITRO_FULL);
+		assert_eq!(state.content_limit(), MAX_PREMIUM_CONTENT);
+		assert_eq!(state.upload_limit(), 500 * 1024 * 1024);
+		assert!(state.stickers.external_allowed);
+
+		state.set_local_premium(false);
+		assert_eq!(state.content_limit(), MAX_CONTENT);
+		assert_eq!(state.upload_limit(), 20 * 1024 * 1024);
+		assert!(!state.stickers.external_allowed);
+	}
+
+	#[test]
+	fn a_real_tier_is_kept_separate_from_the_override() {
+		// The override is additive, not a rewrite: `premium_type` still reports what Discord said, so
+		// the rest of the client is not being told the account holds something it does not.
+		let mut state = State {
+			premium_type: 2,
+			..State::default()
+		};
+		state.set_local_premium(true);
+		assert_eq!(state.premium_type, 2);
+		assert_eq!(state.effective_premium_type(), NITRO_FULL);
+
+		state.set_local_premium(false);
+		assert_eq!(
+			state.premium_type, 2,
+			"turning the override off restores the real tier"
+		);
+		assert_eq!(state.effective_premium_type(), 2);
 	}
 }
