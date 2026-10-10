@@ -2647,10 +2647,21 @@ impl Desktop {
 			return;
 		}
 		self.app_settings.observe(&self.messaging);
+		self.sync_local_premium();
 		self.cache_pending += usize::from(
 			self.app_settings
 				.save(self.cache.as_ref(), self.state.generation),
 		);
+	}
+	/// Carries the device-local entitlement override into the session state.
+	///
+	/// Kept separate from the persistence path so a preference that has not been saved yet still
+	/// applies immediately, and so the state never has to be rebuilt to pick it up.
+	fn sync_local_premium(&mut self) {
+		if self.state.local_premium == self.messaging.local_nitro {
+			return;
+		}
+		self.state.set_local_premium(self.messaging.local_nitro);
 	}
 	fn accept_font(&mut self, ctx: &egui::Context, result: &font_import::Selected) {
 		self.messaging.custom_font.busy = false;

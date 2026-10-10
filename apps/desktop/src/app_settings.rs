@@ -52,6 +52,7 @@ impl Settings {
 			notification_options: ui.notification_options,
 			show_hidden_channels: ui.show_hidden_channels,
 			hide_nitro_emojis: ui.hide_nitro_emojis,
+			local_nitro: ui.local_nitro,
 			convert_emoticons: ui.convert_emoticons,
 			hide_title_bar: ui.hide_title_bar,
 			hide_window_decorations: ui.hide_window_decorations,
@@ -95,6 +96,7 @@ impl Settings {
 		ui.notification_options = value.notification_options;
 		ui.show_hidden_channels = value.show_hidden_channels;
 		ui.hide_nitro_emojis = value.hide_nitro_emojis;
+		ui.local_nitro = value.local_nitro;
 		ui.convert_emoticons = value.convert_emoticons;
 		ui.hide_title_bar = value.hide_title_bar;
 		ui.hide_window_decorations = value.hide_window_decorations;

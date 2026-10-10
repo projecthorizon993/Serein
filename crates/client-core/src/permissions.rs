@@ -774,7 +774,7 @@ impl State {
 	pub fn can_send_custom_emoji(&self, channel: Id, source: Id, emoji: &CustomEmoji) -> bool {
 		self.custom_emoji_unavailable_reason(channel, source, emoji)
 			.is_none()
-			&& (matches!(self.premium_type, 1..=3)
+			&& (matches!(self.effective_premium_type(), 1..=3)
 				|| (!emoji.animated
 					&& self.channel(channel).and_then(|target| target.guild) == Some(source)))
 	}
@@ -786,7 +786,7 @@ impl State {
 		source: Id,
 		emoji: &CustomEmoji,
 	) -> bool {
-		self.premium_type == 0
+		self.effective_premium_type() == 0
 			&& (emoji.animated
 				|| self.channel(channel).and_then(|target| target.guild) != Some(source))
 	}

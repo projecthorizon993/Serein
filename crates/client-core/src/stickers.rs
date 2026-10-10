@@ -287,4 +287,127 @@ mod tests {
 		state.channels[0].guild = Some(Id(100));
 		assert!(state.sticker_requires_nitro(&external));
 	}
+
+	/// A sticker owned by a guild the current channel is not in.
+	///
+	/// Discord calls this an external sticker, and it is the one FakeNitro exists for: two separate
+	/// gates stand in front of it, and only one of them is an entitlement.
+	fn external_sticker(id: u64, guild: u64) -> Sticker {
+		Sticker {
+			id: Id(id),
+			name: "Other".into(),
+			description: String::new(),
+			tags: "hello".into(),
+			format_type: 1,
+			guild_id: Some(Id(guild)),
+			pack_id: None,
+			available: true,
+		}
+	}
+
+	fn dm_state() -> State {
+		State {
+			channels: vec![model::Channel {
+				id: Id(1),
+				guild: None,
+				parent_id: None,
+				kind: 1,
+				name: "DM".into(),
+				position: 0,
+				recipients: vec![],
+				last_message: None,
+				icon: None,
+				member_list_id: None,
+				tags: None,
+				message_count: None,
+			}],
+			selected: Some(Id(1)),
+			auth: AuthState::Authenticated,
+			freshness: crate::Freshness::Fresh,
+			gateway_connected: true,
+			user: Some(crate::tests::message(1).author),
+			..State::default()
+		}
+	}
+
+	#[test]
+	fn a_local_override_unblocks_external_stickers_where_the_entitlement_was_the_only_gate() {
+		let mut state = dm_state();
+		// A DM has no guild, so `permission()` reports the external-sticker bit as granted and the
+		// entitlement is the only thing standing in the way.
+		let external = external_sticker(9, 99);
+		state.stickers.external_allowed = false;
+		assert!(
+			state.sticker_requires_nitro(&external),
+			"precondition: the entitlement gate should be closed"
+		);
+		assert!(!state.can_send_sticker(&external));
+
+		state.set_local_premium(true);
+		assert!(
+			!state.sticker_requires_nitro(&external),
+			"the override opens it"
+		);
+		assert!(state.can_send_sticker(&external), "so the send is possible");
+
+		// Turning it back off restores the original answer rather than leaving the flag half-applied.
+		state.set_local_premium(false);
+		assert!(!state.can_send_sticker(&external));
+	}
+
+	#[test]
+	fn a_local_override_does_not_survive_being_contradicted_by_the_gateway() {
+		let mut state = dm_state();
+		let external = external_sticker(9, 99);
+		state.set_local_premium(true);
+		assert!(state.can_send_sticker(&external));
+
+		// `STICKER_ENTITLEMENT` is the server telling the client what the account actually holds. It
+		// must not silently drop the override, because it arrives at any time during a session.
+		state.apply(crate::Envelope {
+			generation: state.generation,
+			event: crate::Event::StickerEntitlement {
+				user: state.user.as_ref().unwrap().id,
+				premium_type: model::Patch::Value(0),
+			},
+		});
+		assert_eq!(state.premium_type, 0, "the real tier is still recorded");
+		assert!(
+			state.stickers.external_allowed,
+			"the override still applies"
+		);
+		assert!(state.can_send_sticker(&external));
+	}
+
+	#[test]
+	fn an_override_does_not_bypass_a_server_permission() {
+		// The other half of the answer: a guild channel that does not grant USE_EXTERNAL_STICKERS
+		// still refuses the send with the override on. That gate is Discord's, enforced server-side,
+		// and overriding it client-side would produce a send the server rejects anyway.
+		let mut state = dm_state();
+		state.channels[0].guild = Some(Id(100));
+		let external = external_sticker(9, 99);
+		state.set_local_premium(true);
+		assert!(
+			!state.sticker_requires_nitro(&external),
+			"the entitlement gate is open"
+		);
+		// With no guild record, `permission()` is None, so the final clause fails.
+		assert!(
+			!state.can_send_sticker(&external),
+			"the permission gate still applies"
+		);
+	}
+
+	#[test]
+	fn a_sticker_from_the_channel_own_guild_is_not_external_at_all() {
+		let mut state = dm_state();
+		state.channels[0].guild = Some(Id(99));
+		let external = external_sticker(9, 99);
+		state.stickers.external_allowed = false;
+		assert!(
+			!state.sticker_requires_nitro(&external),
+			"a guild's own sticker needs no entitlement"
+		);
+	}
 }

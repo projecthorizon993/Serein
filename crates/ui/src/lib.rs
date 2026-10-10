@@ -296,6 +296,12 @@ pub struct MessagingUi {
 	message_requests_collapsed: bool,
 	/// Custom emoji that need Nitro stay out of `:` suggestions and are locked in pickers.
 	pub hide_nitro_emojis: bool,
+	/// Report every entitlement as present on this device.
+	///
+	/// Mirrors the `local_nitro` preference and is what [`client_core::State::set_local_premium`] is
+	/// driven from, so the entitlement gates follow the same savings path as every other device
+	/// preference.
+	pub local_nitro: bool,
 	pub hide_title_bar: bool,
 	pub hide_window_decorations: bool,
 	pub custom_font: fonts::Settings,

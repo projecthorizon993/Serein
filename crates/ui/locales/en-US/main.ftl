@@ -3498,6 +3498,12 @@ settings-chat-settings-emoji = Emoji
 settings-chat-settings-suggest-nitro-emojis = Suggest emojis that need Nitro
 # Context: chat_settings
 settings-chat-settings-suggest-nitro-emojis-description = Offer animated and other servers' emojis in : suggestions and the picker without Nitro. When off, they are hidden from suggestions and locked in the picker.
+# Context: chat_settings
+settings-chat-settings-entitlements = Entitlements
+# Context: chat_settings
+settings-chat-settings-local-nitro = Unlock Nitro features on this device
+# Context: chat_settings
+settings-chat-settings-local-nitro-description = Sends longer messages, uploads bigger files, and uses other servers' stickers and animated emojis without Nitro. Discord may still refuse them, exactly as it does with a client-side mod. This only changes what the client lets you send.
 # Context: close_control
 settings-close-control-close-settings-esc = Close settings (Esc)
 # Context: colour_preset_settings

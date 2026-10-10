@@ -1079,6 +1079,20 @@ impl MessagingUi {
 				self.hide_nitro_emojis = !suggest;
 			},
 		);
+		design::group(
+			ui,
+			&crate::i18n::translate("settings-chat-settings-entitlements"),
+			|ui| {
+				// Device-local only, and named for what it actually does: it changes what this
+				// client lets you send, not what the account is entitled to.
+				design::switch(
+					ui,
+					"settings-chat-settings-local-nitro",
+					Some("settings-chat-settings-local-nitro-description"),
+					&mut self.local_nitro,
+				);
+			},
+		);
 	}
 
 	/// Built-in presets plus enabled community themes, one swatch each.
