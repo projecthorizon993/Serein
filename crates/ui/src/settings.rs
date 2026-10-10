@@ -33,10 +33,12 @@ enum Page {
 	Updates,
 	Extensions,
 	Themes,
+	/// Built-in mods ported from Vencord's plugin list.
+	BuiltInMods,
 }
 impl Page {
 	/// Every page in sidebar order; the narrow-window page picker lists them the same way.
-	const ALL: [Self; 14] = [
+	const ALL: [Self; 15] = [
 		Self::Account,
 		Self::Profile,
 		Self::MessagingPermissions,
@@ -51,6 +53,7 @@ impl Page {
 		Self::Updates,
 		Self::Themes,
 		Self::Extensions,
+		Self::BuiltInMods,
 	];
 	/// Sidebar sections: account-level choices first, then how this app looks and behaves,
 	/// then community add-ons.
@@ -77,7 +80,10 @@ impl Page {
 				Self::Updates,
 			],
 		),
-		("section-customization", &[Self::Themes, Self::Extensions]),
+		(
+			"section-customization",
+			&[Self::Themes, Self::Extensions, Self::BuiltInMods],
+		),
 	];
 	fn label_key(self) -> &'static str {
 		match self {
@@ -95,6 +101,7 @@ impl Page {
 			Self::Updates => "page-updates",
 			Self::Extensions => "page-extensions",
 			Self::Themes => "page-themes",
+			Self::BuiltInMods => "page-built-in-mods",
 		}
 	}
 	fn label(self, language: Language) -> String {
@@ -116,6 +123,7 @@ impl Page {
 			Self::Updates => "description-updates",
 			Self::Extensions => "description-extensions",
 			Self::Themes => "description-themes",
+			Self::BuiltInMods => "description-built-in-mods",
 		}
 	}
 	fn description(self, language: Language) -> String {
@@ -155,6 +163,9 @@ impl Page {
 			}
 			Self::Extensions => "extensions plugins shop store catalog import community tools",
 			Self::Themes => "themes shop store catalog import community appearance colors",
+			Self::BuiltInMods => {
+				"builtin mods vencord plugins fake nitro message logger character counter preview timer role colour domain trust sockets"
+			}
 		};
 		keywords.contains(query)
 			|| self.label(language).to_lowercase().contains(query)
@@ -478,6 +489,7 @@ impl MessagingUi {
 											.select_themes(self.settings.page == Page::Themes);
 										self.extensions.settings(ui, state);
 									}
+									Page::BuiltInMods => self.built_in_mods(ui),
 								}
 								if state.demo {
 									ui.add_space(20.0);
@@ -1091,6 +1103,107 @@ impl MessagingUi {
 					Some("settings-chat-settings-local-nitro-description"),
 					&mut self.local_nitro,
 				);
+			},
+		);
+	}
+
+	/// The Vencord plugin catalog, split by what this client actually does about each one.
+	///
+	/// Only the handful with a real [`Setting`] get a switch, and each one writes the preference that
+	/// already backs the behaviour. Everything else is listed read-only with the reason, because a
+	/// switch that changes nothing is worse than no switch, and "why is this mod missing" is a worse
+	/// answer than "this needs a DOM Serein does not have".
+	fn built_in_mods(&mut self, ui: &mut egui::Ui) {
+		use extensions::builtin_plugins::{Plugin, Port, Setting};
+
+		let query = self.builtin_mod_query.trim().to_lowercase();
+		let matches = |plugin: &Plugin| {
+			query.is_empty()
+				|| plugin.id.to_lowercase().contains(&query)
+				|| plugin.name.to_lowercase().contains(&query)
+				|| plugin.description.to_lowercase().contains(&query)
+		};
+		// Notes and descriptions come from the catalog, which sources them from Vencord's own text, so
+		// they are data rather than UI copy and are deliberately not translation keys.
+		let switchable: Vec<&Plugin> = Plugin::ALL
+			.iter()
+			.filter(|p| p.is_toggleable() && matches(p))
+			.collect();
+		let native: Vec<&Plugin> = Plugin::ALL
+			.iter()
+			.filter(|p| p.port == Port::Native && matches(p))
+			.collect();
+		let partial: Vec<&Plugin> = Plugin::ALL
+			.iter()
+			.filter(|p| p.port == Port::Partial && !p.is_toggleable() && matches(p))
+			.collect();
+		let unsupported: Vec<&Plugin> = Plugin::ALL
+			.iter()
+			.filter(|p| p.port == Port::Unsupported && matches(p))
+			.collect();
+
+		ui.label(
+			"Serein reimplements mods as native features rather than patching a web app, so a mod is \
+			 available here only when there is a real code path to put behind it.",
+		);
+		ui.add_space(6.0);
+		ui.horizontal(|ui| {
+			ui.label("Search");
+			ui.text_edit_singleline(&mut self.builtin_mod_query);
+			if !self.builtin_mod_query.is_empty() && ui.small_button("Clear").clicked() {
+				self.builtin_mod_query.clear();
+			}
+		});
+		ui.add_space(6.0);
+
+		if !switchable.is_empty() {
+			design::group(ui, &format!("Switchable ({})", switchable.len()), |ui| {
+				for plugin in switchable {
+					// Every arm writes the preference that already backs the behaviour, so the switch
+					// here and the one on the Chat page are the same setting, not two.
+					let (label, description) = match plugin.setting {
+						Some(Setting::LocalNitro) => (&mut self.local_nitro, plugin.note),
+						Some(Setting::ShowHiddenChannels) => {
+							(&mut self.show_hidden_channels, plugin.note)
+						}
+						// Unreachable while every variant is handled above. A new variant has to be
+						// wired to a real preference before it can reach this page.
+						None => continue,
+					};
+					design::switch(ui, plugin.name, Some(description), label);
+				}
+			});
+		}
+
+		if !native.is_empty() {
+			design::group(ui, &format!("Built in ({})", native.len()), |ui| {
+				ui.label("These are how this client already works. There is nothing to switch.");
+				for plugin in native {
+					ui.label(format!("{} — {}", plugin.name, plugin.note));
+				}
+			});
+		}
+
+		if !partial.is_empty() {
+			design::group(
+				ui,
+				&format!("Different behaviour ({})", partial.len()),
+				|ui| {
+					for plugin in partial {
+						ui.label(format!("{} — {}", plugin.name, plugin.note));
+					}
+				},
+			);
+		}
+
+		design::group(
+			ui,
+			&format!("Not available ({})", unsupported.len()),
+			|ui| {
+				ui.label("These need a web app, a DOM, or CSS injection to patch.");
+				for plugin in unsupported {
+					ui.label(format!("{} — {}", plugin.name, plugin.note));
+				}
 			},
 		);
 	}

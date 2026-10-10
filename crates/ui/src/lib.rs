@@ -302,6 +302,8 @@ pub struct MessagingUi {
 	/// driven from, so the entitlement gates follow the same savings path as every other device
 	/// preference.
 	pub local_nitro: bool,
+	/// Filter text on the built-in mods page.
+	pub builtin_mod_query: String,
 	pub hide_title_bar: bool,
 	pub hide_window_decorations: bool,
 	pub custom_font: fonts::Settings,

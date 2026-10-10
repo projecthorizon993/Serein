@@ -23,6 +23,8 @@ mod app;
 pub use app::*;
 mod extended;
 pub use extended::*;
+pub mod builtin_plugins;
+pub use builtin_plugins::{Plugin, Port, Setting};
 
 pub const API_VERSION: u32 = 1;
 pub const MAX_PACKAGE_BYTES: usize = 16 * 1024 * 1024;
